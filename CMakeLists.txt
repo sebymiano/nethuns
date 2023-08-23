@@ -26,8 +26,16 @@ option(NETHUNS_OPT_NETMAP               "Enable Netmap support" OFF)
 
 add_definitions(-D_GNU_SOURCE)
 
-find_library(LIBPCAP_LIBRARY NAMES libpcap.a PATHS "/usr/local/opt/licap/lib" NO_DEFAULT_PATH)
-find_path(LIBPCAP_INCLUDE_DIR NAMES pcap/pcap.h PATHS "/usr/local/opt/libpcap/include/" NO_DEFAULT_PATH)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBPCAP REQUIRED libpcap)
+
+message(STATUS "Found libpcap:")
+message(STATUS "  Version: ${LIBPCAP_VERSION}")
+message(STATUS "  Libraries: ${LIBPCAP_LIBRARIES}")
+message(STATUS "  Include Directories: ${LIBPCAP_INCLUDE_DIRS}")
+
+set(LIBPCAP_LIBRARY ${LIBPCAP_LIBRARIES})
+set(LIBPCAP_INCLUDE_DIR ${LIBPCAP_INCLUDE_DIRS})
 
 include_directories(${LIBPCAP_INCLUDE_DIR})
 include_directories(/usr/local/opt/libpcap/include /usr/local/include/ src)
