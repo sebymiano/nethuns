@@ -4,9 +4,8 @@
 
 #pragma once
 
-#include "xdp/libbpf.h"
-#include "xdp/bpf.h"
-#include "xdp/xsk.h"
+#include <xdp/libxdp.h>
+#include <xdp/xsk.h>
 
 #include <stdint.h>
 

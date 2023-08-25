@@ -7,3 +7,4 @@ hdr/version.hpp
 CMakeFiles
 CMakeCache.txt
 cmake_install.cmake
+sudo_gdb.sh

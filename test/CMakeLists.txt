@@ -12,8 +12,7 @@ include(../Nethuns.cmake)
 # Compiler options...
 #
 
-
-set (CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -g -O2 -march=native -fomit-frame-pointer -Wall -Wextra -Wshadow")
+set (CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}  -g -O2 -march=native -fomit-frame-pointer -Wall -Wextra -Wshadow")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2 -std=c++17 -march=native -fomit-frame-pointer -Wall -Wextra -Wshadow")
 
 find_library(LIBPCAP_LIBRARY NAMES libpcap.a PATHS "/usr/local/opt/licap/lib" NO_DEFAULT_PATH NO_SYSTEM_ENVIRONMENT_PATH)

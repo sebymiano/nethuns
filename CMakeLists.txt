@@ -21,7 +21,7 @@ set (CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(NETHUNS_OPT_LIBPCAP              "Enable libpcap support" ON)
 option(NETHUNS_OPT_BUILTIN_PCAP_READER  "Enable builtin pcap reader" OFF)
 option(NETHUNS_OPT_TPACKET_V3           "Enable TPACKET v3 support" OFF)
-option(NETHUNS_OPT_XDP                  "Enable XDP" OFF)
+option(NETHUNS_OPT_XDP                  "Enable XDP" ON)
 option(NETHUNS_OPT_NETMAP               "Enable Netmap support" OFF)
 
 add_definitions(-D_GNU_SOURCE)
@@ -38,12 +38,11 @@ set(LIBPCAP_LIBRARY ${LIBPCAP_LIBRARIES})
 set(LIBPCAP_INCLUDE_DIR ${LIBPCAP_INCLUDE_DIRS})
 
 include_directories(${LIBPCAP_INCLUDE_DIR})
-include_directories(/usr/local/opt/libpcap/include /usr/local/include/ src)
+include_directories(/usr/local/opt/libpcap/include src)
 
 if (NETHUNS_OPT_XDP)
-	include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libbpf/)
-	include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libbpf/include/)
-	include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libbpf/include/uapi)
+    include_directories(${CMAKE_CURRENT_BINARY_DIR}/libbpf/)
+	include_directories(${CMAKE_CURRENT_BINARY_DIR}/libxdp/include/)
 endif()
 
 #
@@ -86,12 +85,12 @@ if (NETHUNS_OPT_XDP)
 
     find_package(ZLIB)
 
-    set(LIBBPF_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/libbpf/src/libbpf.a)
+    set(LIBBPF_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.a)
 
     add_custom_target(
   	build_libbpf ALL
-  	COMMAND ${CMAKE_MAKE_PROGRAM}
-  	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libbpf/src
+  	COMMAND ${CMAKE_MAKE_PROGRAM} OBJDIR=${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/libbpf INCLUDEDIR= LIBDIR= UAPIDIR= install 
+  	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libxdp/lib/libbpf/src
 	COMMENT "Libbpf makefile target" )
 
     add_library(libbpf STATIC IMPORTED)
@@ -100,11 +99,27 @@ if (NETHUNS_OPT_XDP)
     set_target_properties(libbpf PROPERTIES IMPORTED_LOCATION_NOCONFIG "${LIBBPF_LIBRARY}")
 
     add_dependencies(libbpf build_libbpf)
+    
+    set(LIBXDP_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/libxdp.a)
+
+    add_custom_target(
+  	build_libxdp ALL
+  	COMMAND make PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libxdp install
+  	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libxdp
+	COMMENT "Libxdp makefile target" )
+
+    add_library(libxdp STATIC IMPORTED)
+
+    set_property(TARGET libxdp APPEND PROPERTY IMPORTED_CONFIGURATIONS NOCONFIG)
+    set_target_properties(libxdp PROPERTIES IMPORTED_LOCATION_NOCONFIG "${LIBXDP_LIBRARY}")
+
+    add_dependencies(libxdp build_libxdp)
 
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xdp.c)
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xsk_ext.c)
 
     list(APPEND NETHUNS_LIBS libbpf)
+    list(APPEND NETHUNS_LIBS libxdp)
     list(APPEND NETHUNS_LIBS -lelf)
     list(APPEND NETHUNS_LIBS ZLIB::ZLIB)
 
@@ -139,8 +154,21 @@ add_dependencies(nethuns revision)
 install(TARGETS nethuns DESTINATION /usr/local/lib)
 
 install(DIRECTORY src/nethuns/ 	   	DESTINATION /usr/local/include/nethuns FILES_MATCHING PATTERN "*.h" PATTERN src/nethuns/sockets/xdp EXCLUDE)
-install(DIRECTORY libbpf/src/      	DESTINATION /usr/local/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
-install(DIRECTORY libbpf/include/uapi/  DESTINATION /usr/local/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libbpf/bpf/      	DESTINATION /usr/local/include/nethuns/sockets/xdp/bpf FILES_MATCHING PATTERN "*.h" )
+# install(DIRECTORY libxdp/lib/libbpf/include/uapi/  DESTINATION /usr/local/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/include/  DESTINATION /usr/local/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
 if (NETHUNS_OPT_XDP)
-    install(FILES     libbpf/src/libbpf.a   DESTINATION /usr/local/lib/)
+    # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.a   DESTINATION /usr/local/lib/)
+    # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libxdp/libxdp.a   DESTINATION /usr/local/lib/)
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/bpf DESTINATION /usr/local/lib)
+
+    file(GLOB LIBBPF_FILES_TO_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.*)
+    file(GLOB LIBXDP_FILES_TO_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/libxdp.*)
+
+    # Remove .a files from the list
+    list(FILTER LIBBPF_FILES_TO_INSTALL EXCLUDE REGEX "\\.a$|\\.pc$")
+    list(FILTER LIBXDP_FILES_TO_INSTALL EXCLUDE REGEX "\\.a$|\\.pc$")
+
+    install(FILES ${LIBBPF_FILES_TO_INSTALL} DESTINATION /usr/local/lib/)
+    install(FILES ${LIBXDP_FILES_TO_INSTALL} DESTINATION /usr/local/lib/)
 endif()

@@ -29,32 +29,33 @@
 #include <string.h>
 #include <time.h>
 
-#include <src/bpf.h>
-#include <src/libbpf.h>
+#include <bpf/bpf.h>
+#include <bpf/btf.h>
+#include <bpf/libbpf.h>
 
 #include <linux/if_link.h>
 #include <linux/if_xdp.h>
-#include <linux/err.h>
-
 
 struct bpf_object*
 load_bpf_object_file(const char *filename, int ifindex)
 {
-	int first_prog_fd = -1;
 	struct bpf_object *obj;
+    struct bpf_program *prog;
 	int err;
 
-	// Struct used to set ifindex for hardware offloading XDP programs.
-    // This sets libbpf bpf_program->prog_ifindex, and foreach bpf_map->map_ifindex.
-	struct bpf_prog_load_attr prog_load_attr = {
-		.prog_type = BPF_PROG_TYPE_XDP,
-		.ifindex   = ifindex,
-	};
-	prog_load_attr.file = filename;
+    obj = bpf_object__open(filename);
+    if (libbpf_get_error(obj)) {
+        nethuns_fprintf(stderr, "load_bpf_object_file: error opening BPF-OBJ file(%s) (%d): %s\n", filename, libbpf_get_error(obj), strerror(libbpf_get_error(obj)));
+        return NULL;
+    }
+
+    prog = bpf_object__next_program(obj, NULL);
+	bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
+    bpf_program__set_ifindex(prog, ifindex);
 
 	// Use libbpf for extracting BPF byte-code from BPF-ELF object, and
 	// loading this into the kernel via bpf-syscall
-	err = bpf_prog_load_xattr(&prog_load_attr, &obj, &first_prog_fd);
+	err = bpf_object__load(obj);
 	if (err) {
 		nethuns_fprintf(stderr, "load_bpf_object_file: loading BPF-OBJ file(%s) (%d): %s\n", filename, err, strerror(-err));
 		return NULL;
@@ -67,22 +68,15 @@ load_bpf_object_file(const char *filename, int ifindex)
 static struct bpf_object*
 open_bpf_object(const char *file, int ifindex)
 {
-	int err;
 	struct bpf_object *obj;
 	struct bpf_map *map;
 	struct bpf_program *prog, *first_prog = NULL;
 
-	struct bpf_object_open_attr open_attr = {
-		.file = file,
-		.prog_type = BPF_PROG_TYPE_XDP,
-	};
-
-	obj = bpf_object__open_xattr(&open_attr);
-	if (IS_ERR_OR_NULL(obj)) {
-		err = -PTR_ERR(obj);
-		nethuns_fprintf(stderr, "open_bpf_object: error opening BPF-OBJ file(%s) (%d): %s\n",	file, err, strerror(-err));
-		return NULL;
-	}
+    obj = bpf_object__open_file(file, NULL);
+    if (libbpf_get_error(obj)) {
+        nethuns_fprintf(stderr, "load_bpf_object_file: error opening BPF-OBJ file(%s) (%d): %s\n", file, libbpf_get_error(obj), strerror(libbpf_get_error(obj)));
+        return NULL;
+    }
 
 	bpf_object__for_each_program(prog, obj) {
 		bpf_program__set_type(prog, BPF_PROG_TYPE_XDP);
@@ -92,8 +86,7 @@ open_bpf_object(const char *file, int ifindex)
 	}
 
 	bpf_object__for_each_map(map, obj) {
-		if (!bpf_map__is_offload_neutral(map))
-			bpf_map__set_ifindex(map, ifindex);
+        bpf_map__set_ifindex(map, ifindex);
 	}
 
 	if (!first_prog) {
@@ -172,7 +165,7 @@ xdp_link_attach(int ifindex, __u32 xdp_flags, int prog_fd)
 	int err;
 
 	// libbpf provides the XDP net_device link-level hook attach helper
-	err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags);
+	err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL);
 	if (err == -EEXIST && !(xdp_flags & XDP_FLAGS_UPDATE_IF_NOEXIST)) {
 		// Force mode didn't work, probably because a program of the opposite type is loaded.
         // Let's unload that and try loading again.
@@ -181,9 +174,9 @@ xdp_link_attach(int ifindex, __u32 xdp_flags, int prog_fd)
 
 		xdp_flags &= ~XDP_FLAGS_MODES;
 		xdp_flags |= (old_flags & XDP_FLAGS_SKB_MODE) ? XDP_FLAGS_DRV_MODE : XDP_FLAGS_SKB_MODE;
-		err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		err = bpf_xdp_detach(ifindex, xdp_flags, NULL);
 		if (!err)
-			err = bpf_set_link_xdp_fd(ifindex, prog_fd, old_flags);
+			err = bpf_xdp_attach(ifindex, prog_fd, old_flags, NULL);
 	}
 
 	if (err < 0) {
@@ -238,10 +231,10 @@ load_bpf_and_xdp_attach(struct nethuns_socket_xdp *s)
 
     if (nethuns_socket(s)->opt.xdp_prog_sec) {
         // Find a matching BPF prog section name.
-		bpf_prog = bpf_object__find_program_by_title(bpf_obj, nethuns_socket(s)->opt.xdp_prog_sec);
+		bpf_prog = bpf_object__find_program_by_name(bpf_obj, nethuns_socket(s)->opt.xdp_prog_sec);
     } else {
 		// Find the first program.
-		bpf_prog = bpf_program__next(NULL, bpf_obj);
+		bpf_prog = bpf_object__next_program(bpf_obj, NULL);
     }
 
 	if (!bpf_prog) {
@@ -382,15 +375,14 @@ unload_xdp_program(struct nethuns_socket_xdp *s)
         if (--info->xdp_prog_refcnt == 0)
         {
             nethuns_fprintf(stderr, "bpf_prog_load: unloading %s program...\n", nethuns_socket(s)->opt.xdp_prog ? nethuns_socket(s)->opt.xdp_prog : "default");
-
-            if (bpf_get_link_xdp_id(nethuns_socket(s)->ifindex, &curr_prog_id, s->xdp_flags)) {
-                nethuns_perror(nethuns_socket(s)->errbuf, "bpf_get_link: could get xdp id");
+            
+            if (bpf_xdp_query_id(nethuns_socket(s)->ifindex, s->xdp_flags, &curr_prog_id)) {
+                nethuns_perror(nethuns_socket(s)->errbuf, "bpf_xdp_query_id: could get xdp id");
                 goto err;
             }
 
             if (info->xdp_prog_id == 0 || info->xdp_prog_id == curr_prog_id) {
-	            bpf_set_link_xdp_fd(nethuns_socket(s)->ifindex, -1, s->xdp_flags);
-
+                bpf_xdp_detach(nethuns_socket(s)->ifindex, s->xdp_flags, NULL);
             } else if (!curr_prog_id) {
                 nethuns_perror(nethuns_socket(s)->errbuf, "bpf_prog: could get find a prog id on dev '%s'", nethuns_socket(s)->devname);
                 goto err;
@@ -621,11 +613,11 @@ int nethuns_bind_xdp(struct nethuns_socket_xdp *s, const char *dev, int queue)
 
     if (info->xdp_prog_id == 0) {
 	// the library has loaded the default program, retrieve its id
-        if (bpf_get_link_xdp_id(nethuns_socket(s)->ifindex, &info->xdp_prog_id, s->xdp_flags))
+        if (bpf_xdp_query_id(nethuns_socket(s)->ifindex, s->xdp_flags, &info->xdp_prog_id))
         {
-            nethuns_perror(nethuns_socket(s)->errbuf, "bpf_get_link_id: get link xpd failed");
+            nethuns_perror(nethuns_socket(s)->errbuf, "bpf_xdp_query_id: get link xpd failed");
             nethuns_unlock_global();
-	    return -1;
+	        return -1;
         }
     }
 
@@ -702,7 +694,7 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 
     // get timestamp...
 
-    struct timespec tp;
+    struct timespec tp = {};
     //clock_gettime(CLOCK_MONOTONIC_COARSE, &tp);
 
     struct xdp_pkthdr header = {

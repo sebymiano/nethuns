@@ -15,12 +15,11 @@
 #include <stdlib.h>
 
 #include "nethuns/sockets/xdp.h"
-#include <src/bpf.h>
-#include <src/libbpf.h>
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
 
-#include "xdp/xsk.h"
-#include "xdp/bpf.h"
-#include "xdp/libbpf.h"
+#include <xdp/libxdp.h>
+#include <xdp/xsk.h>
 
 #include "xsk_ext.h"
 
@@ -110,7 +109,7 @@ xsk_configure_socket(struct nethuns_socket_xdp *sock)
 						: 0;
 
 	cfg.xdp_flags = sock->xdp_flags;
-	cfg.bind_flags = sock->xdp_bind_flags;
+	cfg.bind_flags = 0;
 
 	ret = xsk_socket__create(&xsk->xsk, nethuns_socket(sock)->devname, nethuns_socket(sock)->queue, sock->umem->umem,
 			sock->rx ? &xsk->rx : NULL,
