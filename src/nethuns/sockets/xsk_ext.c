@@ -14,7 +14,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "nethuns/sockets/xdp.h"
+#include "xdp.h"
+
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
