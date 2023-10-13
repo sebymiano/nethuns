@@ -104,7 +104,7 @@ if (NETHUNS_OPT_XDP)
 
     add_custom_target(
   	build_libxdp ALL
-  	COMMAND make PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libxdp install
+  	COMMAND make PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libxdp BUILD_STATIC_ONLY=y libxdp install
   	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libxdp
 	COMMENT "Libxdp makefile target" )
 
@@ -118,8 +118,8 @@ if (NETHUNS_OPT_XDP)
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xdp.c)
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xsk_ext.c)
 
-    list(APPEND NETHUNS_LIBS libbpf)
-    list(APPEND NETHUNS_LIBS libxdp)
+    list(APPEND NETHUNS_LIBS ${LIBXDP_LIBRARY})
+    list(APPEND NETHUNS_LIBS ${LIBBPF_LIBRARY})
     list(APPEND NETHUNS_LIBS -lelf)
     list(APPEND NETHUNS_LIBS ZLIB::ZLIB)
 
@@ -147,9 +147,18 @@ list(APPEND NETHUNS_SRC src/nethuns/version.c)
 
 add_library(nethuns STATIC ${NETHUNS_SRC})
 
-target_link_libraries(nethuns PRIVATE ${NETHUS_LIBS})
+target_link_libraries(nethuns ${NETHUS_LIBS})
 
 add_dependencies(nethuns revision)
+
+add_custom_target(
+  MergeStaticLibraries ALL
+  COMMAND ar -x ${LIBBPF_LIBRARY}
+  COMMAND ar -x ${LIBXDP_LIBRARY}
+  COMMAND ar -qcs libnethuns.a *.o
+  COMMAND rm *.o
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
 
 install(TARGETS nethuns DESTINATION /usr/local/lib)
 
