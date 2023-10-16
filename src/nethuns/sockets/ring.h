@@ -7,6 +7,7 @@
 #include "base.h"
 
 #include "../define.h"
+#include "../api.h"
 
 #if !defined NETHUNS_SOCKET
 #error NETHUNS_SOCKET is not defined.
@@ -72,6 +73,10 @@ nethuns_make_ring(size_t nslots, size_t pktsize, struct nethuns_ring *r)
 {
     size_t ns = nethuns_lpow2(nslots);
     size_t ss = nethuns_lpow2(sizeof(struct nethuns_ring_slot) + pktsize);
+
+#ifdef DEBUG
+    nethuns_fprintf(stderr, "nslots %ld ns %ld ss %ld\n", nslots, ns, ss);
+#endif
 
     r->size    = nslots;
     r->pktsize = pktsize;

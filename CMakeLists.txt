@@ -151,6 +151,10 @@ target_link_libraries(nethuns ${NETHUS_LIBS})
 
 add_dependencies(nethuns revision)
 
+if (DEBUG)
+    target_compile_definitions(nethuns PRIVATE DEBUG=${DEBUG})
+endif()
+
 add_custom_target(
   MergeStaticLibraries ALL
   COMMAND ar -x ${LIBBPF_LIBRARY}

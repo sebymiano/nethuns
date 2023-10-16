@@ -412,6 +412,10 @@ nethuns_open_xdp(struct nethuns_socket_options *opt, char *errbuf)
     struct nethuns_socket_xdp *s;
     unsigned int n;
 
+#ifdef DEBUG
+    nethuns_fprintf(stderr, "Calling nethuns_open_xdp\n");
+#endif
+
     s = calloc(1, sizeof(struct nethuns_socket_xdp));
     if (!s)
     {
@@ -482,6 +486,11 @@ nethuns_open_xdp(struct nethuns_socket_options *opt, char *errbuf)
 		goto err0;
 	}
 
+#ifdef DEBUG
+    nethuns_fprintf(stderr, "Num packets: %d\n", opt->numpackets);
+    nethuns_fprintf(stderr, "Num blocks: %d\n", opt->numblocks);
+#endif
+
     // what is the purpose of numblock?
 	s->first_rx_frame = 0;
 	s->first_tx_frame = 0;
@@ -506,6 +515,13 @@ nethuns_open_xdp(struct nethuns_socket_options *opt, char *errbuf)
 
     s->total_mem = !!s->tx * (s->base.tx_ring.mask + 1) * s->framesz +
                    !!s->rx * (s->base.rx_ring.mask + 1) * s->framesz;
+
+#ifdef DEBUG
+    nethuns_fprintf(stderr, "open: total_mem %ld\n", s->total_mem);
+    nethuns_fprintf(stderr, "open: framesz %ld\n", s->framesz);
+    nethuns_fprintf(stderr, "base rx ring mask %ld\n", s->base.rx_ring.mask);
+    nethuns_fprintf(stderr, "base tx ring mask %ld\n", s->base.tx_ring.mask);
+#endif
 
     s->bufs = mmap(NULL, s->total_mem,
                                  PROT_READ | PROT_WRITE,
@@ -682,7 +698,7 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 
     /* process the packet */
 
-        uint64_t addr;
+    uint64_t addr;
 	slot->pkthdr.addr = addr = xsk_ring_cons__rx_desc(&s->xsk->rx, s->idx_rx)->addr;
 	uint32_t len  = xsk_ring_cons__rx_desc(&s->xsk->rx, s->idx_rx++)->len;
 	s->rcvd--;

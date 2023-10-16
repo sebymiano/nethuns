@@ -35,7 +35,16 @@ xsk_configure_umem(
 {
 	struct xsk_umem_info *umem;
 	struct xsk_umem_config cfg = {
-		.fill_size = sock->base.rx_ring.mask + 1,
+		/* We recommend that you set the fill ring size >= HW RX ring size +
+		 * AF_XDP RX ring size. Make sure you fill up the fill ring
+		 * with buffers at regular intervals, and you will with this setting
+		 * avoid allocation failures in the driver. These are usually quite
+		 * expensive since drivers have not been written to assume that
+		 * allocation failures are common. For regular sockets, kernel
+		 * allocated memory is used that only runs out in OOM situations
+		 * that should be rare.
+		 */
+		.fill_size = (sock->base.rx_ring.mask + 1) * 2,
 		.comp_size = sock->base.tx_ring.mask + 1,
 		.frame_size = frame_size,
 		.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM,
@@ -44,8 +53,10 @@ xsk_configure_umem(
 
 	int ret;
 
-	//printf("buffer %p size %ld (%lx) frame_size %ld (%lx)\n",
-	//		buffer, size, size, frame_size, frame_size);
+#ifdef DEBUG
+	printf("buffer %p size %ld (%lx) frame_size %ld (%lx)\n",
+			buffer, size, size, frame_size, frame_size);
+#endif
 
 	umem = calloc(1, sizeof(*umem));
 	if (!umem) {
@@ -62,31 +73,6 @@ xsk_configure_umem(
 	umem->buffer = buffer;
 	return umem;
 }
-
-
-//int
-//xsk_populate_fill_ring(
-//	  struct nethuns_socket_xdp *sock
-//	, size_t frame_size)
-//{
-//	int ret, i;
-//	uint32_t idx;
-//
-//	ret = xsk_ring_prod__reserve(&sock->umem->fq,
-//				     XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
-//
-//	if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS) {
-//        	nethuns_perror(nethuns_socket(sock)->errbuf, "xsk_populate_fill_ring: could not reserve fill ring");
-//		return -ret;
-//	}
-//
-//	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i++)
-//		*xsk_ring_prod__fill_addr(&sock->umem->fq, idx++) =
-//			i * frame_size;
-//	xsk_ring_prod__submit(&sock->umem->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS);
-//	return 0;
-//}
-
 
 struct xsk_socket_info *
 xsk_configure_socket(struct nethuns_socket_xdp *sock)
@@ -105,6 +91,9 @@ xsk_configure_socket(struct nethuns_socket_xdp *sock)
 	cfg.rx_size = sock->base.rx_ring.mask + 1;
 	cfg.tx_size = sock->base.tx_ring.mask + 1;
 
+	nethuns_fprintf(stderr, "RX size: %d\n", cfg.rx_size);
+	nethuns_fprintf(stderr, "TX size: %d\n", cfg.tx_size);
+
 	cfg.libbpf_flags = nethuns_socket(sock)->opt.xdp_prog != NULL
 						? XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD
 						: 0;
@@ -122,19 +111,19 @@ xsk_configure_socket(struct nethuns_socket_xdp *sock)
 		goto err;
 	}
 
-	ret = xsk_ring_prod__reserve(&xsk->umem->fq, cfg.rx_size, &idx);
+	ret = xsk_ring_prod__reserve(&xsk->umem->fq, cfg.rx_size * 2, &idx);
 
-	if (ret != cfg.rx_size) {
+	if (ret != (cfg.rx_size * 2)) {
         nethuns_perror(nethuns_socket(sock)->errbuf, "xsk_config: could not reserve slots in fill ring");
 		goto err;
 	}
 
-	for (i = 0; i < cfg.rx_size; i ++) {
-		*xsk_ring_prod__fill_addr(&xsk->umem->fq, idx) = rx_frame(sock, idx);
+	for (i = 0; i < (cfg.rx_size * 2); i ++) {
+		*xsk_ring_prod__fill_addr(&xsk->umem->fq, idx) = rx_frame2(sock, idx);
 		idx++;
 	}
 
-	xsk_ring_prod__submit(&xsk->umem->fq, cfg.rx_size);
+	xsk_ring_prod__submit(&xsk->umem->fq, cfg.rx_size * 2);
 
 	return xsk;
 err:
