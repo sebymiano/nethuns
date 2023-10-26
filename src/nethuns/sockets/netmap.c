@@ -317,7 +317,7 @@ nethuns_recv_netmap(struct nethuns_socket_netmap *s, nethuns_pkthdr_t const **pk
 
     i = ring->cur;
     idx = ring->slot[i].buf_idx;
-    pkt = (const uint8_t *)NETMAP_BUF(ring, idx);
+    pkt = (const uint8_t *)NETMAP_BUF_OFFSET(ring, &ring->slot[i]);
 
     slot->pkthdr.ts = ring->ts;
     slot->pkthdr.len = slot->pkthdr.caplen = ring->slot[i].len;

@@ -22,7 +22,7 @@ option(NETHUNS_OPT_LIBPCAP              "Enable libpcap support" ON)
 option(NETHUNS_OPT_BUILTIN_PCAP_READER  "Enable builtin pcap reader" OFF)
 option(NETHUNS_OPT_TPACKET_V3           "Enable TPACKET v3 support" OFF)
 option(NETHUNS_OPT_XDP                  "Enable XDP" ON)
-option(NETHUNS_OPT_NETMAP               "Enable Netmap support" OFF)
+option(NETHUNS_OPT_NETMAP               "Enable Netmap support" ON)
 
 add_definitions(-D_GNU_SOURCE)
 
@@ -147,7 +147,7 @@ list(APPEND NETHUNS_SRC src/nethuns/version.c)
 
 add_library(nethuns STATIC ${NETHUNS_SRC})
 
-target_link_libraries(nethuns ${NETHUS_LIBS})
+target_link_libraries(nethuns ${NETHUNS_LIBS})
 
 add_dependencies(nethuns revision)
 
@@ -180,8 +180,8 @@ if (NETHUNS_OPT_XDP)
     file(GLOB LIBXDP_FILES_TO_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/libxdp.*)
 
     # Remove .a files from the list
-    list(FILTER LIBBPF_FILES_TO_INSTALL EXCLUDE REGEX "\\.a$|\\.pc$")
-    list(FILTER LIBXDP_FILES_TO_INSTALL EXCLUDE REGEX "\\.a$|\\.pc$")
+    list(FILTER LIBBPF_FILES_TO_INSTALL EXCLUDE REGEX "\\.pc$")
+    list(FILTER LIBXDP_FILES_TO_INSTALL EXCLUDE REGEX "\\.pc$")
 
     install(FILES ${LIBBPF_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
     install(FILES ${LIBXDP_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
