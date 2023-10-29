@@ -406,27 +406,29 @@ unload_xdp_program(struct nethuns_socket_xdp *s)
     return -1;
 }
 
-static void apply_setsockopt(struct nethuns_socket_xdp *s)
+static int apply_setsockopt(struct nethuns_socket_xdp *s)
 {
 	int sock_opt;
 
 	if (!s->opt_busy_poll)
-		return;
+		return 0;
 
 	sock_opt = 1;
-	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
+	if (setsockopt(xsk_socket__fd(s->xsk->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
+		return -1;
 
 	sock_opt = 20;
-	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_BUSY_POLL,
+	if (setsockopt(xsk_socket__fd(s->xsk->xsk), SOL_SOCKET, SO_BUSY_POLL,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
+		return -1;
 
 	sock_opt = s->opt_batch_size;
-	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
+	if (setsockopt(xsk_socket__fd(s->xsk->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
 		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
-		exit_with_error(errno);
+		return -1;
+    
+    return 0;
 }
 
 
@@ -635,7 +637,10 @@ int nethuns_bind_xdp(struct nethuns_socket_xdp *s, const char *dev, int queue)
         return -1;
     }
 
-    apply_setsockopt(s);
+    if (apply_setsockopt(s) < 0) {
+        nethuns_perror(s->base.errbuf, "bind: setsockopt (%s)", nethuns_dev_queue_name(dev, queue));
+        return -1;
+    }
 
     if (load_xdp_program(s, dev) < 0) {
         nethuns_perror(s->base.errbuf, "bind: could not load xdp program %s (%s)", nethuns_socket(s)->opt.xdp_prog, nethuns_dev_queue_name(dev, queue));
@@ -709,7 +714,7 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 		s->rcvd = xsk_ring_cons__peek(&s->xsk->rx, 1, &s->idx_rx);
 		if (s->rcvd == 0)  {
             if (s->opt_busy_poll || xsk_ring_prod__needs_wakeup(&s->xsk->umem->fq)) {
-                recvfrom(xsk_socket__fd(s->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+                recvfrom(xsk_socket__fd(s->xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
             }
 			return 0;
 		}
@@ -721,7 +726,7 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 
 			while (ret != stock_frames) {
                 if (s->opt_busy_poll || xsk_ring_prod__needs_wakeup(&s->xsk->umem->fq)) {
-                    recvfrom(xsk_socket__fd(s->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+                    recvfrom(xsk_socket__fd(s->xsk->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
                 }
 				ret = xsk_ring_prod__reserve(&s->xsk->umem->fq, s->rcvd, &idx_fq);
             }
