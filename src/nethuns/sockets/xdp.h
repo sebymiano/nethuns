@@ -47,6 +47,9 @@ struct nethuns_socket_xdp
     unsigned int rcvd;
     unsigned int toflush;
     uint32_t idx_rx;
+
+    bool opt_busy_poll;
+    unsigned int opt_batch_size;
 };
 
 

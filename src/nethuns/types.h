@@ -49,6 +49,8 @@ struct nethuns_socket_options
     bool                        promisc;
     bool                        rxhash;
     bool                        tx_qdisc_bypass;
+    bool                        busy_poll;            // xdp only
+    unsigned int                batch_size;           // xdp only
     const char                  *xdp_prog;            // xdp only
     const char                  *xdp_prog_sec;        // xdp only
     const char                  *xsk_map_name;        // xdp only

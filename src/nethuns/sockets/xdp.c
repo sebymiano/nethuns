@@ -35,6 +35,7 @@
 
 #include <linux/if_link.h>
 #include <linux/if_xdp.h>
+#include <sys/socket.h>
 
 struct bpf_object*
 load_bpf_object_file(const char *filename, int ifindex)
@@ -405,6 +406,29 @@ unload_xdp_program(struct nethuns_socket_xdp *s)
     return -1;
 }
 
+static void apply_setsockopt(struct nethuns_socket_xdp *s)
+{
+	int sock_opt;
+
+	if (!s->opt_busy_poll)
+		return;
+
+	sock_opt = 1;
+	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		exit_with_error(errno);
+
+	sock_opt = 20;
+	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_BUSY_POLL,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		exit_with_error(errno);
+
+	sock_opt = s->opt_batch_size;
+	if (setsockopt(xsk_socket__fd(s->xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET,
+		       (void *)&sock_opt, sizeof(sock_opt)) < 0)
+		exit_with_error(errno);
+}
+
 
 struct nethuns_socket_xdp *
 nethuns_open_xdp(struct nethuns_socket_options *opt, char *errbuf)
@@ -449,6 +473,14 @@ nethuns_open_xdp(struct nethuns_socket_options *opt, char *errbuf)
     }
 
     nethuns_socket(s)->ifindex = 0;
+
+    s->opt_busy_poll = opt->busy_poll;
+    s->opt_batch_size = opt->batch_size;
+
+    if (s->opt_busy_poll && !s->opt_batch_size) {
+        nethuns_perror(errbuf, "open: batch_size must be set when busy_poll is enabled");
+        goto err0;
+    }
 
     // TODO: support for HUGE pages
     // -> opt_umem_flags |= XDP_UMEM_UNALIGNED_CHUNK_FLAG;
@@ -603,6 +635,8 @@ int nethuns_bind_xdp(struct nethuns_socket_xdp *s, const char *dev, int queue)
         return -1;
     }
 
+    apply_setsockopt(s);
+
     if (load_xdp_program(s, dev) < 0) {
         nethuns_perror(s->base.errbuf, "bind: could not load xdp program %s (%s)", nethuns_socket(s)->opt.xdp_prog, nethuns_dev_queue_name(dev, queue));
         return -1;
@@ -674,6 +708,9 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 	if (s->rcvd == 0) {
 		s->rcvd = xsk_ring_cons__peek(&s->xsk->rx, 1, &s->idx_rx);
 		if (s->rcvd == 0)  {
+            if (s->opt_busy_poll || xsk_ring_prod__needs_wakeup(&s->xsk->umem->fq)) {
+                recvfrom(xsk_socket__fd(s->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+            }
 			return 0;
 		}
 
@@ -682,8 +719,12 @@ nethuns_recv_xdp(struct nethuns_socket_xdp *s, nethuns_pkthdr_t const **pkthdr, 
 
 			ret = xsk_ring_prod__reserve(&s->xsk->umem->fq, stock_frames, &idx_fq);
 
-			while (ret != stock_frames)
+			while (ret != stock_frames) {
+                if (s->opt_busy_poll || xsk_ring_prod__needs_wakeup(&s->xsk->umem->fq)) {
+                    recvfrom(xsk_socket__fd(s->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+                }
 				ret = xsk_ring_prod__reserve(&s->xsk->umem->fq, s->rcvd, &idx_fq);
+            }
 
 			for (i = 0; i < stock_frames; i++) {
 				//printf("rx_frame(%d) %lx\n", idx_fq, rx_frame(s, idx_fq));
