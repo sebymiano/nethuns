@@ -320,8 +320,8 @@ main(int argc, char *argv[])
     netopt =
     {
         .numblocks       = 1
-    ,   .numpackets      = 4096
-    ,   .packetsize      = 2048
+    ,   .numpackets      = 1024
+    ,   .packetsize      = 0
     ,   .timeout_ms      = 0
     ,   .dir             = nethuns_in_out
     ,   .capture         = nethuns_cap_zero_copy
@@ -329,6 +329,8 @@ main(int argc, char *argv[])
     ,   .promisc         = true
     ,   .rxhash          = false
     ,   .tx_qdisc_bypass = true
+    ,   .busy_poll       = true
+    ,   .batch_size      = 16
     //,   .xdp_prog        = "/etc/nethuns/net_xdp.o"
     //,   .xdp_prog        = "/home/devel/xdp-tutorial/advanced03-AF_XDP/af_xdp_kern.o"
     //,   .xdp_prog_sec    = "xdp_sock1"

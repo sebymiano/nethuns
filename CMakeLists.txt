@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 
 project (nethuns)
 
@@ -85,42 +85,25 @@ if (NETHUNS_OPT_XDP)
 
     find_package(ZLIB)
 
-    set(LIBBPF_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.a)
+    pkg_check_modules(LIBXDP REQUIRED libxdp)
 
-    add_custom_target(
-  	build_libbpf ALL
-  	COMMAND ${CMAKE_MAKE_PROGRAM} OBJDIR=${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf DESTDIR=${CMAKE_CURRENT_BINARY_DIR}/libbpf INCLUDEDIR= LIBDIR= UAPIDIR= install 
-  	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libxdp/lib/libbpf/src
-	COMMENT "Libbpf makefile target" )
+    message(STATUS "Found libxdp:")
+    message(STATUS "  Version: ${LIBXDP_VERSION}")
+    message(STATUS "  Libraries: ${LIBXDP_LIBRARIES}")
+    message(STATUS "  Static Libraries: ${LIBXDP_STATIC_LIBRARIES}")
+    message(STATUS "  Include Directories: ${LIBXDP_INCLUDE_DIRS}")
 
-    add_library(libbpf STATIC IMPORTED)
+    # Check if libxdp version is 1.4.0 or greater
+    if (NOT ${LIBXDP_VERSION} VERSION_GREATER_EQUAL "1.4.0")
+        message(FATAL_ERROR "libxdp version must be 1.4.0 or greater")
+    endif()
 
-    set_property(TARGET libbpf APPEND PROPERTY IMPORTED_CONFIGURATIONS NOCONFIG)
-    set_target_properties(libbpf PROPERTIES IMPORTED_LOCATION_NOCONFIG "${LIBBPF_LIBRARY}")
-
-    add_dependencies(libbpf build_libbpf)
-    
-    set(LIBXDP_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/libxdp.a)
-
-    add_custom_target(
-  	build_libxdp ALL
-  	COMMAND make PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libxdp BUILD_STATIC_ONLY=y libxdp install
-  	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libxdp
-	COMMENT "Libxdp makefile target" )
-
-    add_library(libxdp STATIC IMPORTED)
-
-    set_property(TARGET libxdp APPEND PROPERTY IMPORTED_CONFIGURATIONS NOCONFIG)
-    set_target_properties(libxdp PROPERTIES IMPORTED_LOCATION_NOCONFIG "${LIBXDP_LIBRARY}")
-
-    add_dependencies(libxdp build_libxdp)
+    include_directories(${LIBXDP_INCLUDE_DIRS})
 
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xdp.c)
     list(APPEND NETHUNS_SRC src/nethuns/sockets/xsk_ext.c)
 
-    list(APPEND NETHUNS_LIBS ${LIBXDP_LIBRARY})
-    list(APPEND NETHUNS_LIBS ${LIBBPF_LIBRARY})
-    list(APPEND NETHUNS_LIBS -lelf)
+    list(APPEND NETHUNS_LIBS ${LIBXDP_LIBRARIES})
     list(APPEND NETHUNS_LIBS ZLIB::ZLIB)
 
 endif()
@@ -155,34 +138,10 @@ if (DEBUG)
     target_compile_definitions(nethuns PRIVATE DEBUG=${DEBUG})
 endif()
 
-add_custom_target(
-  MergeStaticLibraries ALL
-  COMMAND ar -x ${LIBBPF_LIBRARY}
-  COMMAND ar -x ${LIBXDP_LIBRARY}
-  COMMAND ar -qcs libnethuns.a *.o
-  COMMAND rm *.o
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
 
 install(TARGETS nethuns DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 install(DIRECTORY src/nethuns/ 	   	DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns FILES_MATCHING PATTERN "*.h" PATTERN src/nethuns/sockets/xdp EXCLUDE)
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libbpf/bpf/      	DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns/sockets/xdp/bpf FILES_MATCHING PATTERN "*.h" )
-# install(DIRECTORY libxdp/lib/libbpf/include/uapi/  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/include/  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
 
-if (NETHUNS_OPT_XDP)
-    # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.a   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-    # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libxdp/libxdp.a   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/bpf DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-
-    file(GLOB LIBBPF_FILES_TO_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.*)
-    file(GLOB LIBXDP_FILES_TO_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/libxdp.*)
-
-    # Remove .a files from the list
-    list(FILTER LIBBPF_FILES_TO_INSTALL EXCLUDE REGEX "\\.pc$")
-    list(FILTER LIBXDP_FILES_TO_INSTALL EXCLUDE REGEX "\\.pc$")
-
-    install(FILES ${LIBBPF_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-    install(FILES ${LIBXDP_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-endif()
