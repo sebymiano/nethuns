@@ -171,7 +171,7 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libbpf/bpf/      	DESTINATION ${CM
 # install(DIRECTORY libxdp/lib/libbpf/include/uapi/  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/include/  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/nethuns/sockets/xdp FILES_MATCHING PATTERN "*.h" )
 
-if (NETHUNS_OPT_XDP)
+# if (NETHUNS_OPT_XDP)
     # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf/libbpf.a   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
     # install(FILES     ${CMAKE_CURRENT_BINARY_DIR}/libxdp/libxdp.a   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/libxdp/lib/bpf DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
@@ -185,4 +185,4 @@ if (NETHUNS_OPT_XDP)
 
     install(FILES ${LIBBPF_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
     install(FILES ${LIBXDP_FILES_TO_INSTALL} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/)
-endif()
+# endif()
